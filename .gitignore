@@ -13,3 +13,7 @@
 
 # env
 .env
+
+# GO module
+go.mod
+go.sum
