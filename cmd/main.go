@@ -5,6 +5,7 @@ import (
 	"essentials/libraries/database"
 	"essentials/schema"
 	"flag"
+	"fmt"
 	"log"
 	"os"
 
@@ -12,14 +13,23 @@ import (
 )
 
 func main() {
+
 	if _, ok := os.LookupEnv("APP_ENV"); !ok {
 		config.Setup(".env")
 	}
 
+	if err := run(); err != nil {
+		log.Printf("error: shutting down: %s", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
+
 	// Start Database
 	db, err := database.Open()
 	if err != nil {
-		log.Fatalf("error: connecting to db: %s", err)
+		return fmt.Errorf("connecting to db: %v", err)
 	}
 	defer db.Close()
 
@@ -29,18 +39,16 @@ func main() {
 	switch flag.Arg(0) {
 	case "migrate":
 		if err := schema.Migrate(db); err != nil {
-			log.Println("error applying migrations", err)
-			os.Exit(1)
+			return fmt.Errorf("applying migrations: %v", err)
 		}
 		log.Println("Migrations complete")
-		return
 
 	case "seed":
 		if err := schema.Seed(db); err != nil {
-			log.Println("error seeding database", err)
-			os.Exit(1)
+			return fmt.Errorf("seeding database: %v", err)
 		}
 		log.Println("Seed data complete")
-		return
 	}
+
+	return nil
 }

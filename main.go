@@ -2,9 +2,10 @@ package main
 
 import (
 	"context"
-	"essentials/controllers"
 	"essentials/libraries/config"
 	"essentials/libraries/database"
+	"essentials/routing"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -21,30 +22,42 @@ func main() {
 	}
 
 	// =========================================================================
+	// Logging
+	log := log.New(os.Stdout, "Essentials : ", log.LstdFlags|log.Lmicroseconds|log.Lshortfile)
+
+	if err := run(log); err != nil {
+		log.Printf("error: shutting down: %s", err)
+		os.Exit(1)
+	}
+}
+
+func run(log *log.Logger) error {
+	// =========================================================================
 	// App Starting
 
 	log.Printf("main : Started")
 	defer log.Println("main : Completed")
 
+	// =========================================================================
+
 	// Start Database
+
 	db, err := database.Open()
 	if err != nil {
-		log.Fatalf("error: connecting to db: %s", err)
+		return fmt.Errorf("connecting to db: %v", err)
 	}
 	defer db.Close()
-
-	service := controllers.Users{Db: db}
 
 	// parameter server
 	server := http.Server{
 		Addr:         os.Getenv("APP_PORT"),
-		Handler:      http.HandlerFunc(service.List),
+		Handler:      routing.API(db, log),
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 5 * time.Second,
 	}
 
 	serverErrors := make(chan error, 1)
-
+	// mulai listening server
 	go func() {
 		log.Println("server listening on", server.Addr)
 		serverErrors <- server.ListenAndServe()
@@ -59,7 +72,7 @@ func main() {
 	// jika ada error saat listenAndServe server maupun ada sinyal shutdown yang diterima
 	select {
 	case err := <-serverErrors:
-		log.Fatalf("error: listening and serving: %s", err)
+		return fmt.Errorf("Starting server: %v", err)
 
 	case <-shutdown:
 		log.Println("caught signal, shutting down")
@@ -70,12 +83,12 @@ func main() {
 		defer cancel()
 
 		if err := server.Shutdown(ctx); err != nil {
-			log.Printf("error: gracefully shutting down server: %s", err)
+			log.Printf("main : Graceful shutdown did not complete in %v : %v", timeout, err)
 			if err := server.Close(); err != nil {
-				log.Printf("error: closing server: %s", err)
+				return fmt.Errorf("could not stop server gracefully: %v", err)
 			}
 		}
 	}
 
-	log.Println("DONE")
+	return nil
 }
